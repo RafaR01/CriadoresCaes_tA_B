@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace CriadoresCaes_tA_B.Data {
 
    /// <summary>
-   /// esta classe representa a Base de Dados a ser utilizada neste projeto
+   ///  esta classe representa a Base de Dados a ser utilizada neste projeto
    /// </summary>
    public class CriadoresCaesDB : DbContext {
 

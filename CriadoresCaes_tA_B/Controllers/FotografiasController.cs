@@ -75,9 +75,18 @@ namespace CriadoresCaes_tA_B.Controllers
         }
 
         // GET: Fotografias/Create
+        /// <summary>
+        /// 
+        ///invoca, na primeira vez, a View com os dados de criação de uma fotografia
+        /// </summary>
+        /// <returns></returns>
         public IActionResult Create()
         {
-            ViewData["CaoFK"] = new SelectList(_context.Caes, "Id", "Id");
+
+            // geração da lista de valores disponíveis na DropDown
+            // o ViewData transporta dados a serem associados ao atributo 'CaoFK'
+            // 
+            ViewData["CaoFK"] = new SelectList(_context.Caes, "Id", "Nome");
             return View();
         }
 

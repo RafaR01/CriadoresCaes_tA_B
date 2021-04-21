@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using CriadoresCaes_tA_B.Data;
 using CriadoresCaes_tA_B.Models;
+using Microsoft.AspNetCore.Http;
+using System.IO;
+using Microsoft.AspNetCore.Hosting;
 
 namespace CriadoresCaes_tA_B.Controllers
 {
@@ -19,9 +22,15 @@ namespace CriadoresCaes_tA_B.Controllers
         /// </summary>
         private readonly CriadoresCaesDB _context;
 
-        public FotografiasController(CriadoresCaesDB context)
+        /// <summary>
+        /// este atributo contém os dados 
+        /// </summary>
+        private readonly IWebHostEnvironment _caminho;
+
+        public FotografiasController(CriadoresCaesDB context, IWebHostEnvironment caminho)
         {
             _context = context;
+            _context = caminho;
         }
 
         // GET: Fotografias
@@ -56,22 +65,41 @@ namespace CriadoresCaes_tA_B.Controllers
 
 
         // GET: Fotografias/Details/5
+        /// <summary>
+        /// Mostra os detalhes de uma fotografia
+        /// </summary>
+        /// <param name="id">Identificador da Fotografia</param>
+        /// <returns></returns>
         public async Task<IActionResult> Details(int? id)
         {
             if (id == null)
             {
-                return NotFound();
+                // entro aqui se não foi específicado o ID
+
+                // redirecionar para a página de início
+                return RedirectToAction("Index");
+
+                //return NotFound();
             }
 
-            var fotografias = await _context.Fotografias
+            // se chego aqui, foi específicado um ID
+            // vou procurar se existe uma Fotografia com esse valor
+
+            var fotografia = await _context.Fotografias
                 .Include(f => f.Cao)
-                .FirstOrDefaultAsync(m => m.Id == id);
-            if (fotografias == null)
+                .FirstOrDefaultAsync(f => f.Id == id);
+            if (fotografia == null)
             {
-                return NotFound();
+                // o ID específicado não corresponde a uma fotografia
+                //return NotFound();
+                // redirecionar para a página de início
+                return RedirectToAction("Index");
             }
 
-            return View(fotografias);
+            // se cheguei aqui, é porque a foto existe e foi encontrada
+            //mostro-a na View
+
+            return View(fotografia);
         }
 
         // GET: Fotografias/Create
@@ -86,7 +114,7 @@ namespace CriadoresCaes_tA_B.Controllers
             // geração da lista de valores disponíveis na DropDown
             // o ViewData transporta dados a serem associados ao atributo 'CaoFK'
             // 
-            ViewData["CaoFK"] = new SelectList(_context.Caes, "Id", "Nome");
+            ViewData["CaoFK"] = new SelectList(_context.Caes.OrderBy(c=>c.Nome), "Id", "Nome");
             return View();
         }
 
@@ -95,12 +123,80 @@ namespace CriadoresCaes_tA_B.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Fotografia,DataFoto,Local,CaoFK")] Fotografias fotografias)
+        public async Task<IActionResult> Create([Bind("DataFoto,Local,CaoFK")] Fotografias fotografias, IFormFile fotoCao)
+
+        /* processar o ficheiro
+         * - existe ficheiro?
+         *  - se não existe, o que fazer? => gerar uma mensagem de erro e devolver o controlo à View
+         *  - se continua é porque o ficheiro existe
+         *      - mas será que é do tipo correto?
+         *          - avaliar se é imagem
+         *              - se sim: - especificar o seu novo nome 
+         *                  - específicar a localização
+         *                  - associar ao objeto 'foto' o nome deste ficheiro
+         *                  - guardar ficheiro no disco rígido do servidor 
+         *              - se não => gerar uma mensagem de erro e devolver o controlo à View
+        */
+        
+        
+        
         {
+            //var auxiliar
+            string nomeImagem = "";
+
+            if (fotoCao == null)
+            {
+                // não há ficheiro
+                // adicionar msg de erro
+                ModelState.AddModelError("", "Adicione, por favor, a fotografia do cão");
+                ViewData["CaoFK"] = new SelectList(_context.Caes.OrderBy(c=> c.Nome), "Id", "Nome");
+                // devolver o controlo à View
+                return View(fotografias);
+            }
+            else
+            {
+                // há ficheiro. Mas será um ficheiro válido?
+                if (fotoCao .ContentType == "image/jpeg" || fotoCao .ContentType == "image/png")
+                {
+                    //definir o novo nome da foto da fotografia 
+                    Guid g;
+                    g = Guid.NewGuid();
+                    nomeImagem = fotografias.CaoFK + "_" + g.ToString(); // tambem poderia ser usado a formatação
+                    // determinar a extensão do nome da imagem
+                    string extensao = Path.GetExtension(fotoCao.FileName).ToLower();
+                    // agora, consigo ter o nome final do ficheiro
+                    nomeImagem = nomeImagem+extensao;
+
+                    //associar este ficheiro aos dados da Fotografia do cão
+                    fotografias.Fotografia = nomeImagem;
+
+                    //localização do amazenamento da imagem
+                    string localizacaoFicheiro = _caminho.WebRootPath;
+                    nomeImagem = Path.Combine(localizacaoFicheiro,"fotos", nomeImagem);
+                }
+                else
+                {
+                    // ficheiro não é válido
+                    // adicionar msg de erro
+                    ModelState.AddModelError("", "Só pode escolher uma imagem para a associar ao cão");
+                    ViewData["CaoFK"] = new SelectList(_context.Caes.OrderBy(c => c.Nome), "Id", "Nome");
+                    // devolver o controlo à View
+                    return View(fotografias);
+                }
+            }
+
             if (ModelState.IsValid)
             {
+                // Adicionar os dados da nova fotografia à base de dados
                 _context.Add(fotografias);
+                // Consolidar os dados na base de dados
                 await _context.SaveChangesAsync();
+
+                // Se cheguei aqui, tudo correu bem
+                //Vou guardar, agora, no disco rígido do Servidor a imagem
+                using var stream = new FileStream(nomeImagem, FileMode.Create);
+                await fotoCao.CopyToAsync(stream);
+
                 return RedirectToAction(nameof(Index));
             }
             ViewData["CaoFK"] = new SelectList(_context.Caes, "Id", "Id", fotografias.CaoFK);
@@ -185,8 +281,20 @@ namespace CriadoresCaes_tA_B.Controllers
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             var fotografias = await _context.Fotografias.FindAsync(id);
-            _context.Fotografias.Remove(fotografias);
-            await _context.SaveChangesAsync();
+            try
+            {
+                //Proteger a eliminação de uma foto
+                _context.Fotografias.Remove(fotografias);
+                await _context.SaveChangesAsync();
+
+                // não esquecer, remover o ficheiro da Fotografia do disco rígido
+
+            }
+            catch(Exception)
+            {
+                throw;
+            }
+            
             return RedirectToAction(nameof(Index));
         }
 
